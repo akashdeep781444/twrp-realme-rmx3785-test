@@ -8,40 +8,46 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup
-      run: |
-        sudo apt update
-        sudo apt install -y git python3 wget curl openjdk-11-jdk
-        
-    - name: Download files
+      
+    - name: Download kernel and ramdisk
       run: |
         mkdir -p device/realme/RE5C6CL1/prebuilt
         
-        # Download with curl (most reliable)
+        # Download kernel using simple method
+        echo "Downloading kernel..."
         curl -L -o device/realme/RE5C6CL1/prebuilt/kernel \
+            "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" || \
+        wget -O device/realme/RE5C6CL1/prebuilt/kernel \
             "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW"
-        
+            
+        # Download ramdisk
+        echo "Downloading ramdisk..."
         curl -L -o device/realme/RE5C6CL1/prebuilt/ramdisk.cpio \
+            "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" || \
+        wget -O device/realme/RE5C6CL1/prebuilt/ramdisk.cpio \
             "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc"
+            
+        echo "Files downloaded:"
+        ls -lh device/realme/RE5C6CL1/prebuilt/
         
-    - name: Build with Docker (EASIEST)
+    - name: Build with official Android Docker
       run: |
-        # Use Docker image with everything pre-installed
-        docker run --rm -v $(pwd):/workspace \
-          ghcr.io/sunilpaulmathew/docker-twrp-builder:latest \
-          /bin/bash -c "
-          cd /workspace &&
+        # Use official LineageOS Docker image
+        docker run --rm -v $(pwd):/src \
+          lineageos4microg/docker-lineage-cicd:latest \
+          bash -c "
+          cd /src &&
           git clone https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 twrp &&
           cd twrp &&
           mkdir -p device/realme/RE5C6CL1 &&
-          cp -r /workspace/device/realme/RE5C6CL1/* device/realme/RE5C6CL1/ &&
+          cp -r /src/device/realme/RE5C6CL1/* device/realme/RE5C6CL1/ &&
           source build/envsetup.sh &&
           lunch twrp_RE5C6CL1-eng &&
+          export ALLOW_MISSING_DEPENDENCIES=true &&
           make recoveryimage
           "
           
-    - name: Upload
+    - name: Upload recovery
       uses: actions/upload-artifact@v4
       with:
         name: recovery
