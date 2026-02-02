@@ -1,5 +1,7 @@
-$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base.mk)
+# device/realme/RE5C6CL1/device.mk
+
+# Inherit from common TWRP
+$(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)
 
 # Device identifier
 PRODUCT_DEVICE := RE5C6CL1
@@ -10,7 +12,7 @@ PRODUCT_MANUFACTURER := realme
 
 # Copy kernel
 PRODUCT_COPY_FILES += \
-    $(DEVICE_PATH)/prebuilt/kernel:kernel
+    $(LOCAL_PATH)/prebuilt/kernel:kernel
 
 # Recovery packages
 PRODUCT_PACKAGES += \
@@ -21,7 +23,4 @@ PRODUCT_PACKAGES += \
 # For A/B devices
 PRODUCT_PACKAGES += \
     bootctrl.$(TARGET_BOARD_PLATFORM) \
-    bootctrl.$(TARGET_BOARD_PLATFORM).recovery \
-    android.hardware.boot@1.0-impl \
-    android.hardware.boot@1.0-impl.recovery \
-    android.hardware.boot@1.0-service
+    bootctrl.$(TARGET_BOARD_PLATFORM).recovery
