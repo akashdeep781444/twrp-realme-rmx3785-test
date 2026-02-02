@@ -10,19 +10,18 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Checkout
+    - name: Checkout device tree
       uses: actions/checkout@v4
       
-    - name: Setup Environment
+    - name: Setup environment
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
+        sudo apt update
+        sudo apt install -y \
             git python3 python3-pip curl wget unzip zip \
             openjdk-11-jdk ccache bc rsync \
             build-essential libc6-dev-i386 lib32z1 \
             zlib1g-dev libssl-dev libxml2-utils xsltproc \
             cpio lz4
-        
         sudo ln -sf /usr/bin/python3 /usr/bin/python
         
     - name: Install repo tool
@@ -30,51 +29,51 @@ jobs:
         sudo curl -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
         sudo chmod a+x /usr/local/bin/repo
         
-    - name: Initialize TWRP source
+    - name: Initialize TWRP
       run: |
-        mkdir twrp
-        cd twrp
-        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
+        mkdir twrp && cd twrp
+        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
         
     - name: Sync sources
       run: |
         cd twrp
         repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
         
-    - name: Setup device tree
+    - name: Create device tree
       run: |
         mkdir -p twrp/device/realme/RE5C6CL1
-        cp -r device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
+        
+        # Copy ALL files from your device tree
+        cp -r ../device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
+        
+        # Create prebuilt directory if it doesn't exist
+        mkdir -p twrp/device/realme/RE5C6CL1/prebuilt
         
     - name: Download kernel and ramdisk
       run: |
-        mkdir -p twrp/device/realme/RE5C6CL1/prebuilt
+        cd twrp/device/realme/RE5C6CL1/prebuilt
         
-        # Simple Google Drive download
-        download_file() {
-            fileid=$1
-            filename=$2
-            echo "Downloading $filename..."
-            
-            # Method 1: Direct download
-            wget --quiet --show-progress \
-                "https://docs.google.com/uc?export=download&id=$fileid" \
-                -O "$filename" && return 0
-                
-            # Method 2: Alternative
-            curl -L -o "$filename" \
-                "https://drive.google.com/uc?export=download&id=$fileid" && return 0
-                
-            echo "Failed to download $filename"
-            return 1
-        }
+        # Install gdown for Google Drive
+        pip install gdown
         
-        # Replace with your actual file IDs
-        download_file "1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" "twrp/device/realme/RE5C6CL1/prebuilt/kernel"
-        download_file "1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" "twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio"
+        # Download kernel - REPLACE WITH YOUR FILE ID
+        gdown "https://drive.google.com/uc?id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O kernel
         
-        echo "Files downloaded:"
-        ls -lh twrp/device/realme/RE5C6CL1/prebuilt/
+        # Download ramdisk - REPLACE WITH YOUR FILE ID  
+        gdown "https://drive.google.com/uc?id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O ramdisk.cpio
+        
+        echo "Files in prebuilt:"
+        ls -lh
+        
+    - name: Fix device tree paths
+      run: |
+        cd twrp/device/realme/RE5C6CL1
+        
+        # Fix device.mk inheritance if needed
+        if ! grep -q "LOCAL_PATH" device.mk 2>/dev/null; then
+            echo "Fixing device.mk..."
+            sed -i '1iLOCAL_PATH := \$(call my-dir)' device.mk
+        fi
         
     - name: Build recovery
       run: |
@@ -82,9 +81,9 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         source build/envsetup.sh
         lunch twrp_RE5C6CL1-eng
-        make -j4 recoveryimage
+        mka recoveryimage
         
-    - name: Upload artifacts
+    - name: Upload recovery
       uses: actions/upload-artifact@v4
       with:
         name: recovery
