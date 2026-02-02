@@ -1,0 +1,13 @@
+# mount point	fstype		device
+/boot		emmc		/dev/block/by-name/boot
+/init_boot	emmc		/dev/block/by-name/init_boot
+/vendor_boot	emmc		/dev/block/by-name/vendor_boot
+/dtbo		emmc		/dev/block/by-name/dtbo
+/system		erofs		/dev/block/by-name/system
+/vendor		erofs		/dev/block/by-name/vendor
+/product	erofs		/dev/block/by-name/product
+/system_ext	erofs		/dev/block/by-name/system_ext
+/odm		erofs		/dev/block/by-name/odm
+/data		f2fs		/dev/block/by-name/userdata
+/metadata	f2fs		/dev/block/by-name/metadata
+/cache		ext4		/dev/block/by-name/cache
