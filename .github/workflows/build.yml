@@ -1,147 +1,42 @@
-name: Build TWRP for realme RMX3785
+name: Build TWRP
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     
     steps:
-    # Step 1: Checkout YOUR device tree repository
-    - name: Checkout device tree
-      uses: actions/checkout@v4
-      
-    - name: Setup build environment
+    - uses: actions/checkout@v4
+    
+    - name: Download files
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-            git-core gnupg flex bison build-essential zip curl \
-            zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
-            lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc \
-            unzip fontconfig python3 python3-pip ccache bc \
-            rsync schedtool cpio lz4 wget openjdk-11-jdk
+        mkdir -p device/realme/RE5C6CL1/prebuilt
         
-        # Fix Python symlink
-        sudo ln -sf /usr/bin/python3 /usr/bin/python
+        # Simple wget with retry
+        wget --tries=3 --timeout=30 \
+          "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" \
+          -O device/realme/RE5C6CL1/prebuilt/kernel
         
-    - name: Install repo tool
+        wget --tries=3 --timeout=30 \
+          "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" \
+          -O device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
+        
+    - name: Build
       run: |
-        sudo curl -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-        sudo chmod a+x /usr/local/bin/repo
-        
-    - name: Initialize TWRP source
-      run: |
-        mkdir twrp
-        cd twrp
-        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
-        
-    - name: Sync TWRP sources
-      run: |
-        cd twrp
-        repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags
-        
-    - name: Copy your device tree to TWRP source
-      run: |
-        cd twrp
-        
-        # Create device directory
-        mkdir -p device/realme/RE5C6CL1
-        
-        # Copy ALL files from your device tree
-        echo "Copying device tree files..."
-        cp -r ../device/realme/RE5C6CL1/* device/realme/RE5C6CL1/ 2>/dev/null || echo "Some files may not have copied"
-        
-        # Check what was copied
-        echo "Device tree contents:"
-        ls -la device/realme/RE5C6CL1/
-        
-    - name: Download kernel and ramdisk if not present
-      run: |
-        cd twrp/device/realme/RE5C6CL1
-        
-        # Create prebuilt directory if it doesn't exist
-        mkdir -p prebuilt
-        
-        # Check if kernel exists
-        if [ ! -f "prebuilt/kernel" ] || [ ! -s "prebuilt/kernel" ]; then
-            echo "Downloading kernel from Google Drive..."
-            pip install gdown
-            gdown "1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O prebuilt/kernel || \
-            wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O prebuilt/kernel
-        fi
-        
-        # Check if ramdisk exists
-        if [ ! -f "prebuilt/ramdisk.cpio" ] || [ ! -s "prebuilt/ramdisk.cpio" ]; then
-            echo "Downloading ramdisk from Google Drive..."
-            gdown "1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O prebuilt/ramdisk.cpio || \
-            wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O prebuilt/ramdisk.cpio
-        fi
-        
-        echo "Prebuilt files:"
-        ls -lh prebuilt/
-        
-    - name: Fix device tree if needed
-      run: |
-        cd twrp/device/realme/RE5C6CL1
-        
-        # Ensure ALLOW_MISSING_DEPENDENCIES is set in BoardConfig.mk
-        if [ -f "BoardConfig.mk" ]; then
-            if ! grep -q "ALLOW_MISSING_DEPENDENCIES" BoardConfig.mk; then
-                echo "" >> BoardConfig.mk
-                echo "# Allow missing dependencies" >> BoardConfig.mk
-                echo "ALLOW_MISSING_DEPENDENCIES := true" >> BoardConfig.mk
-            fi
-            
-            # Ensure 64-bit support is enabled
-            if ! grep -q "TARGET_SUPPORTS_64_BIT_APPS" BoardConfig.mk; then
-                sed -i '/TARGET_ARCH := arm64/a TARGET_SUPPORTS_64_BIT_APPS := true' BoardConfig.mk
-            fi
-        fi
-        
-        # Fix device.mk inheritance if needed
-        if [ -f "device.mk" ]; then
-            if ! grep -q "LOCAL_PATH" device.mk; then
-                sed -i '1iLOCAL_PATH := \$(call my-dir)' device.mk
-            fi
-        fi
-        
-    - name: Build recovery image
-      run: |
-        cd twrp
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export LC_ALL=C
-        source build/envsetup.sh
-        lunch twrp_RE5C6CL1-eng
-        mka recoveryimage
-        
-    - name: Check build output
-      run: |
-        cd twrp
-        if [ -f "out/target/product/RE5C6CL1/recovery.img" ]; then
-            echo "✅ Build successful!"
-            echo "Recovery image size:"
-            ls -lh out/target/product/RE5C6CL1/recovery.img
-        else
-            echo "❌ Build failed - no recovery.img found"
-            echo "Looking for build logs..."
-            find out -name "*.log" -type f | head -10 | xargs ls -la
-            exit 1
-        fi
-        
-    - name: Upload recovery image
+        # Use pre-built Docker image with everything
+        docker run --rm -v $(pwd):/src \
+          lineageos4microg/docker-lineage-cicd:latest \
+          bash -c "cd /src && \
+          git clone https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 twrp && \
+          cd twrp && \
+          cp -r /src/device/realme/RE5C6CL1 device/realme/ && \
+          source build/envsetup.sh && \
+          lunch twrp_RE5C6CL1-eng && \
+          make recoveryimage"
+          
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: twrp-recovery
+        name: recovery
         path: twrp/out/target/product/RE5C6CL1/recovery.img
-        retention-days: 7
-        
-    - name: Upload boot image (if exists)
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: boot-image
-        path: twrp/out/target/product/RE5C6CL1/boot.img
-        retention-days: 7
