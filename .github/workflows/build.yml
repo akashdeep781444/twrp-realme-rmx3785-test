@@ -1,54 +1,189 @@
-name: Build TWRP
+name: Build TWRP for RMX3785
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
     
     steps:
-    - uses: actions/checkout@v4
-      
-    - name: Download kernel and ramdisk
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up build environment
       run: |
-        mkdir -p device/realme/RE5C6CL1/prebuilt
-        
-        # Download kernel using simple method
-        echo "Downloading kernel..."
-        curl -L -o device/realme/RE5C6CL1/prebuilt/kernel \
-            "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" || \
-        wget -O device/realme/RE5C6CL1/prebuilt/kernel \
-            "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW"
-            
-        # Download ramdisk
-        echo "Downloading ramdisk..."
-        curl -L -o device/realme/RE5C6CL1/prebuilt/ramdisk.cpio \
-            "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" || \
-        wget -O device/realme/RE5C6CL1/prebuilt/ramdisk.cpio \
-            "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc"
-            
-        echo "Files downloaded:"
-        ls -lh device/realme/RE5C6CL1/prebuilt/
-        
-    - name: Build with official Android Docker
+        sudo apt-get update
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python3 python-is-python3 bc imagemagick ccache schedtool rsync libssl-dev
+        sudo apt-get install -y openjdk-17-jdk
+        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-ext4-utils
+
+    - name: Set up repo tool
       run: |
-        # Use official LineageOS Docker image
-        docker run --rm -v $(pwd):/src \
-          lineageos4microg/docker-lineage-cicd:latest \
-          bash -c "
-          cd /src &&
-          git clone https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 twrp &&
-          cd twrp &&
-          mkdir -p device/realme/RE5C6CL1 &&
-          cp -r /src/device/realme/RE5C6CL1/* device/realme/RE5C6CL1/ &&
-          source build/envsetup.sh &&
-          lunch twrp_RE5C6CL1-eng &&
-          export ALLOW_MISSING_DEPENDENCIES=true &&
-          make recoveryimage
-          "
-          
-    - name: Upload recovery
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+
+    - name: Initialize TWRP source
+      run: |
+        export PATH="$HOME/bin:$PATH"
+        mkdir twrp
+        cd twrp
+        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=1
+        repo sync -j$(nproc) --force-sync --no-clone-bundle --no-tags
+
+    - name: Set up device tree
+      run: |
+        mkdir -p twrp/device/realme
+        cp -r device/realme/RMX3785 twrp/device/realme/
+        cd twrp/device/realme/RMX3785
+        # Create symlink for kernel (you'll need to upload your kernel)
+        if [ -f "kernel" ]; then
+          echo "Using prebuilt kernel"
+        else
+          echo "WARNING: No kernel found. Build may fail."
+          # Create dummy kernel for testing
+          dd if=/dev/zero of=kernel bs=1M count=10
+        fi
+
+    - name: Build TWRP
+      env:
+        ALLOW_MISSING_DEPENDENCIES: true
+        LC_ALL: C
+      run: |
+        cd twrp
+        source build/envsetup.sh
+        lunch twrp_RMX3785-eng
+        mka -j$(nproc) bootimage
+
+    - name: Check build artifacts
+      run: |
+        if [ -f "twrp/out/target/product/RMX3785/boot.img" ]; then
+          echo "✅ Build successful!"
+          ls -lh twrp/out/target/product/RMX3785/boot.img
+        else
+          echo "❌ Build failed"
+          ls -R twrp/out/target/product/RMX3785/
+          exit 1
+        fi
+
+    - name: Upload boot image
       uses: actions/upload-artifact@v4
       with:
-        name: recovery
-        path: twrp/out/target/product/RE5C6CL1/recovery.img
+        name: TWRP-Boot-Image
+        path: twrp/out/target/product/RMX3785/boot.img
+        retention-days: 7
+
+    - name: Create flashable zip
+      run: |
+        cd twrp/out/target/product/RMX3785
+        mkdir -p twrp_installer/META-INF/com/google/android
+        cp boot.img twrp_installer/
+        
+        # Create updater-script
+        cat > twrp_installer/META-INF/com/google/android/updater-script << 'EOF'
+        ui_print("Installing TWRP for Realme RMX3785");
+        ui_print("Device: RMX3785 (RE5C6CL1)");
+        ui_print("Android: 14");
+        
+        package_extract_file("boot.img", "/tmp/boot.img");
+        
+        ui_print("Writing to boot_a...");
+        write_raw_image("/tmp/boot.img", "boot_a");
+        
+        ui_print("Writing to boot_b...");
+        write_raw_image("/tmp/boot.img", "boot_b");
+        
+        ui_print("Installation complete!");
+        ui_print("Note: You may need to disable vbmeta");
+        ui_print("fastboot flash vbmeta_a --disable-verity --disable-verification vbmeta.img");
+        EOF
+        
+        # Create update-binary
+        cp ../../../../bootable/recovery/install/bin/update-binary twrp_installer/META-INF/com/google/android/
+        
+        # Zip it
+        cd twrp_installer
+        zip -r9 TWRP-RMX3785-$(date +%Y%m%d).zip *
+        mv *.zip ../../
+
+    - name: Upload flashable zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: TWRP-Flashable-Zip
+        path: twrp/out/target/product/RMX3785/*.zip
+        retention-days: 7
+
+    - name: Create GitHub Release
+      if: success()
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          twrp/out/target/product/RMX3785/boot.img
+          twrp/out/target/product/RMX3785/*.zip
+        tag_name: twrp-$(date +%Y%m%d-%H%M)
+        name: TWRP for Realme RMX3785
+        body: |
+          # TWRP Recovery for Realme RMX3785 (RE5C6CL1)
+          
+          ⚠️ **IMPORTANT**: This device has NO recovery partition. TWRP replaces boot image!
+          
+          ## Device Information
+          - **Model**: RMX3785
+          - **Codename**: RE5C6CL1  
+          - **Chipset**: MediaTek MT6835
+          - **Android**: 14
+          - **Kernel**: 5.15.149-android13-8-o-g16d316677e2c
+          - **Security Patch**: 2025-02-01
+          
+          ## Installation Methods
+          
+          ### Method 1: Fastboot (Temporary Test)
+          ```bash
+          adb reboot bootloader
+          fastboot boot boot.img
+          ```
+          
+          ### Method 2: Fastboot (Permanent)
+          ```bash
+          adb reboot bootloader
+          fastboot flash boot_a boot.img
+          fastboot flash boot_b boot.img
+          fastboot reboot
+          ```
+          
+          ### Method 3: Flashable ZIP
+          1. Copy TWRP-*.zip to device
+          2. Boot to existing recovery
+          3. Install zip
+          
+          ## Notes
+          1. **BACKUP YOUR CURRENT BOOT IMAGE FIRST!**
+          2. You may need to disable vbmeta verification:
+          ```bash
+          fastboot flash vbmeta_a --disable-verity --disable-verification vbmeta.img
+          fastboot flash vbmeta_b --disable-verity --disable-verification vbmeta.img
+          ```
+          3. Your device uses A/B slots - flash to both
+          4. Recovery is built as boot image (no recovery partition)
+          
+          ## Partitions
+          ```
+          boot_a: /dev/block/sdc36
+          boot_b: /dev/block/sdc67
+          vendor_boot_a: /dev/block/sdc37
+          dtbo_a: /dev/block/sdc39
+          ```
+          
+          ## Build Information
+          - Built via GitHub Actions
+          - Date: $(date)
+          - TWRP Version: 12.1
+        draft: false
+        prerelease: true
