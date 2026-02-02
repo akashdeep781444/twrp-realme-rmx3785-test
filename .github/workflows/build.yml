@@ -70,8 +70,8 @@ jobs:
         }
         
         # Replace with your actual file IDs
-        download_file "YOUR_KERNEL_FILE_ID" "twrp/device/realme/RE5C6CL1/prebuilt/kernel"
-        download_file "YOUR_RAMDISK_FILE_ID" "twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio"
+        download_file "1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" "twrp/device/realme/RE5C6CL1/prebuilt/kernel"
+        download_file "1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" "twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio"
         
         echo "Files downloaded:"
         ls -lh twrp/device/realme/RE5C6CL1/prebuilt/
