@@ -7,11 +7,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Setup Environment
       run: |
@@ -46,13 +46,16 @@ jobs:
       run: |
         mkdir -p twrp/device/realme/RE5C6CL1/prebuilt
         
-        # Download kernel (replace YOUR_KERNEL_LINK)
-        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O twrp/device/realme/RE5C6CL1/prebuilt/kernel
+        # Download kernel (replace YOUR_KERNEL_FILE_ID)
+        echo "Downloading kernel..."
+        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O twrp/device/realme/RE5C6CL1/prebuilt/kernel
         
-        # Download ramdisk (replace YOUR_RAMDISK_LINK)
-        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
+        # Download ramdisk (replace YOUR_RAMDISK_FILE_ID)
+        echo "Downloading ramdisk..."
+        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
         
         # Verify downloads
+        echo "Downloaded files:"
         ls -lh twrp/device/realme/RE5C6CL1/prebuilt/
         
     - name: Build recovery
@@ -63,8 +66,17 @@ jobs:
         lunch twrp_RE5C6CL1-eng
         mka recoveryimage
         
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+    - name: Upload recovery image
+      uses: actions/upload-artifact@v4
       with:
         name: recovery
         path: twrp/out/target/product/RE5C6CL1/recovery.img
+        retention-days: 7
+
+    - name: Upload boot image
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: boot-image
+        path: twrp/out/target/product/RE5C6CL1/boot.img
+        retention-days: 7
