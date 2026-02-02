@@ -1,0 +1,2 @@
+# This file keeps the prebuilt directory in git
+# Actual kernel and ramdisk will be downloaded from Google Drive during build
