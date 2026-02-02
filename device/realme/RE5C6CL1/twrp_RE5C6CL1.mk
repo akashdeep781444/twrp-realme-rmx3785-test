@@ -1,0 +1,7 @@
+$(call inherit-product, $(DEVICE_PATH)/device.mk)
+
+PRODUCT_DEVICE := RE5C6CL1
+PRODUCT_NAME := twrp_RE5C6CL1
+PRODUCT_BRAND := realme
+PRODUCT_MODEL := RMX3785
+PRODUCT_MANUFACTURER := realme
