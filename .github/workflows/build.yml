@@ -10,9 +10,6 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Checkout device tree
-      uses: actions/checkout@v4
-      
     - name: Setup environment
       run: |
         sudo apt update
@@ -39,41 +36,158 @@ jobs:
         cd twrp
         repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
         
-    - name: Create device tree
+    - name: Create device tree directory
       run: |
-        mkdir -p twrp/device/realme/RE5C6CL1
-        
-        # Copy ALL files from your device tree
-        cp -r ../device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
-        
-        # Create prebuilt directory if it doesn't exist
-        mkdir -p twrp/device/realme/RE5C6CL1/prebuilt
+        cd twrp
+        mkdir -p device/realme/RE5C6CL1/prebuilt
         
     - name: Download kernel and ramdisk
       run: |
         cd twrp/device/realme/RE5C6CL1/prebuilt
         
-        # Install gdown for Google Drive
-        pip install gdown
+        echo "Downloading kernel..."
+        # YOUR KERNEL: 1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW
+        wget --quiet --show-progress --no-check-certificate \
+            "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" \
+            -O kernel
+            
+        echo "Downloading ramdisk..."
+        # YOUR RAMDISK: 1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc
+        wget --quiet --show-progress --no-check-certificate \
+            "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" \
+            -O ramdisk.cpio
         
-        # Download kernel - REPLACE WITH YOUR FILE ID
-        gdown "https://drive.google.com/uc?id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O kernel
-        
-        # Download ramdisk - REPLACE WITH YOUR FILE ID  
-        gdown "https://drive.google.com/uc?id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O ramdisk.cpio
-        
-        echo "Files in prebuilt:"
+        echo "=== Downloaded files ==="
         ls -lh
         
-    - name: Fix device tree paths
+    - name: Create device tree files
       run: |
         cd twrp/device/realme/RE5C6CL1
         
-        # Fix device.mk inheritance if needed
-        if ! grep -q "LOCAL_PATH" device.mk 2>/dev/null; then
-            echo "Fixing device.mk..."
-            sed -i '1iLOCAL_PATH := \$(call my-dir)' device.mk
-        fi
+        # Create BoardConfig.mk
+        cat > BoardConfig.mk << 'EOF'
+# Architecture
+TARGET_ARCH := arm64
+TARGET_ARCH_VARIANT := armv8-2a
+TARGET_CPU_ABI := arm64-v8a
+TARGET_CPU_ABI2 :=
+TARGET_CPU_VARIANT := cortex-a76
+TARGET_SUPPORTS_64_BIT_APPS := true
+
+TARGET_2ND_ARCH := arm
+TARGET_2ND_ARCH_VARIANT := armv8-2a
+TARGET_2ND_CPU_ABI := armeabi-v7a
+TARGET_2ND_CPU_ABI2 := armeabi
+TARGET_2ND_CPU_VARIANT := cortex-a55
+
+# Platform
+TARGET_BOARD_PLATFORM := mt6835
+BOARD_USES_MTK_HARDWARE := true
+
+# Kernel
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel
+BOARD_KERNEL_BASE := 0x40078000
+BOARD_KERNEL_PAGESIZE := 4096
+BOARD_KERNEL_OFFSET := 0x00008000
+BOARD_RAMDISK_OFFSET := 0x11088000
+BOARD_SECOND_OFFSET := 0xbff88000
+BOARD_KERNEL_TAGS_OFFSET := 0x07c08000
+BOARD_DTB_OFFSET := 0x07c08000
+BOARD_BOOT_HEADER_VERSION := 4
+BOARD_MKBOOTIMG_ARGS := --header_version $(BOARD_BOOT_HEADER_VERSION)
+
+# A/B
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS := boot init_boot vendor_boot dtbo vbmeta
+
+# Partitions
+BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
+BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
+
+# File systems
+TARGET_USERIMAGES_USE_F2FS := true
+TARGET_USERIMAGES_USE_EXT4 := true
+BOARD_HAS_LARGE_FILESYSTEM := true
+
+# Recovery
+TARGET_RECOVERY_PIXEL_FORMAT := RGBX_8888
+TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
+BOARD_HAS_NO_SELECT_BUTTON := true
+BOARD_SUPPRESS_SECURE_ERASE := true
+BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
+BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
+
+# TWRP
+TW_THEME := portrait_hdpi
+TW_EXTRA_LANGUAGES := true
+TW_SCREEN_BLANK_ON_BOOT := true
+TW_INPUT_BLACKLIST := "hbtp_vm"
+TW_USE_TOOLBOX := true
+TW_INCLUDE_REPACKTOOLS := true
+
+# Required
+ALLOW_MISSING_DEPENDENCIES := true
+EOF
+        
+        # Create device.mk
+        cat > device.mk << 'EOF'
+LOCAL_PATH := $(call my-dir)
+
+$(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)
+
+PRODUCT_DEVICE := RE5C6CL1
+PRODUCT_NAME := twrp_RE5C6CL1
+PRODUCT_BRAND := realme
+PRODUCT_MODEL := RMX3785
+PRODUCT_MANUFACTURER := realme
+
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/kernel:kernel
+EOF
+        
+        # Create AndroidProducts.mk
+        cat > AndroidProducts.mk << 'EOF'
+PRODUCT_MAKEFILES := \
+    $(LOCAL_DIR)/twrp_RE5C6CL1.mk
+
+COMMON_LUNCH_CHOICES := \
+    twrp_RE5C6CL1-eng
+EOF
+        
+        # Create twrp_RE5C6CL1.mk
+        cat > twrp_RE5C6CL1.mk << 'EOF'
+LOCAL_PATH := $(call my-dir)
+
+$(call inherit-product, $(LOCAL_PATH)/device.mk)
+
+PRODUCT_DEVICE := RE5C6CL1
+PRODUCT_NAME := twrp_RE5C6CL1
+PRODUCT_BRAND := realme
+PRODUCT_MODEL := RMX3785
+PRODUCT_MANUFACTURER := realme
+EOF
+        
+        # Create vendorsetup.sh
+        cat > vendorsetup.sh << 'EOF'
+add_lunch_combo twrp_RE5C6CL1-eng
+EOF
+        
+        # Create recovery.fstab
+        cat > recovery.fstab << 'EOF'
+# mount point	fstype		device
+/boot		emmc		/dev/block/by-name/boot
+/init_boot	emmc		/dev/block/by-name/init_boot
+/vendor_boot	emmc		/dev/block/by-name/vendor_boot
+/dtbo		emmc		/dev/block/by-name/dtbo
+/system		erofs		/dev/block/by-name/system
+/vendor		erofs		/dev/block/by-name/vendor
+/product	erofs		/dev/block/by-name/product
+/system_ext	erofs		/dev/block/by-name/system_ext
+/odm		erofs		/dev/block/by-name/odm
+/data		f2fs		/dev/block/by-name/userdata
+/metadata	f2fs		/dev/block/by-name/metadata
+/cache		ext4		/dev/block/by-name/cache
+EOF
         
     - name: Build recovery
       run: |
@@ -83,8 +197,11 @@ jobs:
         lunch twrp_RE5C6CL1-eng
         mka recoveryimage
         
-    - name: Upload recovery
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: recovery
-        path: twrp/out/target/product/RE5C6CL1/recovery.img
+        name: recovery-files
+        path: |
+          twrp/out/target/product/RE5C6CL1/recovery.img
+          twrp/out/target/product/RE5C6CL1/boot.img
+        retention-days: 7
