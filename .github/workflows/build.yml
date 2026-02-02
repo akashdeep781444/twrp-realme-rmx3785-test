@@ -17,9 +17,14 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
-        zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+        zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses6-dev \
         x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
-        xsltproc unzip fontconfig python3 ccache repo wget
+        xsltproc unzip fontconfig python3 ccache repo wget libncurses5 libncurses5-dev \
+        libssl-dev libelf-dev bc liblz4-tool genext2fs lz4
+        
+    - name: Install Python packages
+      run: |
+        pip install gdown protobuf
         
     - name: Initialize TWRP source
       run: |
@@ -46,17 +51,19 @@ jobs:
       run: |
         mkdir -p twrp/device/realme/RE5C6CL1/prebuilt
         
-        # Download kernel (replace YOUR_KERNEL_FILE_ID)
+        # Download kernel - REPLACE WITH YOUR GOOGLE DRIVE FILE ID
         echo "Downloading kernel..."
-        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O twrp/device/realme/RE5C6CL1/prebuilt/kernel
+        wget -q --show-progress --no-check-certificate "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O twrp/device/realme/RE5C6CL1/prebuilt/kernel
         
-        # Download ramdisk (replace YOUR_RAMDISK_FILE_ID)
+        # Download ramdisk - REPLACE WITH YOUR GOOGLE DRIVE FILE ID
         echo "Downloading ramdisk..."
-        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
+        wget -q --show-progress --no-check-certificate "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
         
-        # Verify downloads
-        echo "Downloaded files:"
+        # Verify
+        echo "=== Downloaded files ==="
         ls -lh twrp/device/realme/RE5C6CL1/prebuilt/
+        echo "Kernel type:"
+        file twrp/device/realme/RE5C6CL1/prebuilt/kernel || echo "Cannot determine kernel type"
         
     - name: Build recovery
       run: |
@@ -66,17 +73,11 @@ jobs:
         lunch twrp_RE5C6CL1-eng
         mka recoveryimage
         
-    - name: Upload recovery image
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: recovery
-        path: twrp/out/target/product/RE5C6CL1/recovery.img
-        retention-days: 7
-
-    - name: Upload boot image
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: boot-image
-        path: twrp/out/target/product/RE5C6CL1/boot.img
+        name: recovery-files
+        path: |
+          twrp/out/target/product/RE5C6CL1/recovery.img
+          twrp/out/target/product/RE5C6CL1/boot.img
         retention-days: 7
