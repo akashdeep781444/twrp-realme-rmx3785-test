@@ -1,0 +1,70 @@
+name: Build TWRP for realme RMX3785
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      
+    - name: Setup Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
+        zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+        x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
+        xsltproc unzip fontconfig python3 ccache repo wget
+        
+    - name: Initialize TWRP source
+      run: |
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        export PATH="$HOME/bin:$PATH"
+        
+        mkdir twrp
+        cd twrp
+        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
+        
+    - name: Sync sources
+      run: |
+        cd twrp
+        repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags
+        
+    - name: Create device tree
+      run: |
+        mkdir -p twrp/device/realme/RE5C6CL1
+        cp -r device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
+        
+    - name: Download kernel and ramdisk
+      run: |
+        mkdir -p twrp/device/realme/RE5C6CL1/prebuilt
+        
+        # Download kernel (replace YOUR_KERNEL_LINK)
+        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O twrp/device/realme/RE5C6CL1/prebuilt/kernel
+        
+        # Download ramdisk (replace YOUR_RAMDISK_LINK)
+        wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" -O twrp/device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
+        
+        # Verify downloads
+        ls -lh twrp/device/realme/RE5C6CL1/prebuilt/
+        
+    - name: Build recovery
+      run: |
+        cd twrp
+        export ALLOW_MISSING_DEPENDENCIES=true
+        source build/envsetup.sh
+        lunch twrp_RE5C6CL1-eng
+        mka recoveryimage
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: recovery
+        path: twrp/out/target/product/RE5C6CL1/recovery.img
