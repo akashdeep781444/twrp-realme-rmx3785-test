@@ -1,42 +1,56 @@
 name: Build TWRP
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Download files
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup
+      run: |
+        sudo apt update
+        sudo apt install -y git python3 wget openjdk-11-jdk
+        sudo ln -s /usr/bin/python3 /usr/bin/python
+        
+    - name: Download prebuilts
       run: |
         mkdir -p device/realme/RE5C6CL1/prebuilt
         
-        # Simple wget with retry
-        wget --tries=3 --timeout=30 \
-          "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" \
-          -O device/realme/RE5C6CL1/prebuilt/kernel
+        # Function to download from Google Drive
+        download_gdrive() {
+            fileid=$1
+            filename=$2
+            
+            # First request to get confirmation token
+            curl -c cookies.txt -s -L "https://drive.google.com/uc?export=download&id=$fileid" > /dev/null
+            confirm=$(awk '/confirm/ {print $NF}' cookies.txt)
+            
+            # Download with confirmation
+            curl -L -b cookies.txt "https://drive.google.com/uc?export=download&confirm=${confirm}&id=$fileid" -o "$filename"
+            rm -f cookies.txt
+        }
         
-        wget --tries=3 --timeout=30 \
-          "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" \
-          -O device/realme/RE5C6CL1/prebuilt/ramdisk.cpio
+        # Download kernel
+        echo "Downloading kernel..."
+        download_gdrive "1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" "device/realme/RE5C6CL1/prebuilt/kernel"
         
-    - name: Build
-      run: |
-        # Use pre-built Docker image with everything
-        docker run --rm -v $(pwd):/src \
-          lineageos4microg/docker-lineage-cicd:latest \
-          bash -c "cd /src && \
-          git clone https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 twrp && \
-          cd twrp && \
-          cp -r /src/device/realme/RE5C6CL1 device/realme/ && \
-          source build/envsetup.sh && \
-          lunch twrp_RE5C6CL1-eng && \
-          make recoveryimage"
-          
-    - name: Upload
-      uses: actions/upload-artifact@v4
+        # Download ramdisk
+        echo "Downloading ramdisk..."
+        download_gdrive "1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc" "device/realme/RE5C6CL1/prebuilt/ramdisk.cpio"
+        
+        echo "Files:"
+        ls -lh device/realme/RE5C6CL1/prebuilt/
+        
+    - name: Build with TWRP-Builder
+      uses: Droid-Builders/TWRP-Builder@main
       with:
-        name: recovery
-        path: twrp/out/target/product/RE5C6CL1/recovery.img
+        device: RE5C6CL1
+        brand: realme
+        twrp_version: 12.1
