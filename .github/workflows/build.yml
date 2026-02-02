@@ -9,18 +9,39 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup environment
+    - name: Setup
       run: |
         sudo apt update
-        sudo apt install -y git python3 python3-pip wget curl openjdk-11-jdk
-        sudo ln -s /usr/bin/python3 /usr/bin/python
+        sudo apt install -y git python3 wget curl openjdk-11-jdk
         
-    - name: Run build script
+    - name: Download files
       run: |
-        chmod +x build.sh
-        ./build.sh
+        mkdir -p device/realme/RE5C6CL1/prebuilt
         
-    - name: Upload recovery
+        # Download with curl (most reliable)
+        curl -L -o device/realme/RE5C6CL1/prebuilt/kernel \
+            "https://drive.google.com/uc?export=download&id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW"
+        
+        curl -L -o device/realme/RE5C6CL1/prebuilt/ramdisk.cpio \
+            "https://drive.google.com/uc?export=download&id=1FGDDKLzjAeCqTjnqQQhTivWOolWcoKgc"
+        
+    - name: Build with Docker (EASIEST)
+      run: |
+        # Use Docker image with everything pre-installed
+        docker run --rm -v $(pwd):/workspace \
+          ghcr.io/sunilpaulmathew/docker-twrp-builder:latest \
+          /bin/bash -c "
+          cd /workspace &&
+          git clone https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 twrp &&
+          cd twrp &&
+          mkdir -p device/realme/RE5C6CL1 &&
+          cp -r /workspace/device/realme/RE5C6CL1/* device/realme/RE5C6CL1/ &&
+          source build/envsetup.sh &&
+          lunch twrp_RE5C6CL1-eng &&
+          make recoveryimage
+          "
+          
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
         name: recovery
